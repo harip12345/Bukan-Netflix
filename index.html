@@ -1220,6 +1220,9 @@
         <div class="player-movie-title" id="playerTitle">—</div>
         <div class="player-movie-meta" id="playerMeta">—</div>
       </div>
+      <button class="player-fs-btn" id="btnSwitchSrc" title="Ganti sumber video" aria-label="Ganti sumber video">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+      </button>
       <button class="player-fs-btn" id="btnFullscreenTop" title="Layar Penuh" aria-label="Layar Penuh">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
       </button>
@@ -1681,11 +1684,15 @@ let isPlaying = true;
 
 /* ── Multi-provider fallback ─────────────────────────── */
 const PROVIDERS = [
-  id => `https://vidsrc.xyz/embed/movie?tmdb=${id}`,
-  id => `https://embed.su/embed/movie/${id}`,
-  id => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
-  id => `https://vidsrc.in/embed/movie?tmdb=${id}`,
-  id => `https://vidsrc.me/embed/movie?tmdb=${id}`,
+  { name: 'VidSrc.to',   movie: id => `https://vidsrc.to/embed/movie/${id}`,            tv: (id,s,e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}` },
+  { name: 'VidSrc.cc',   movie: id => `https://vidsrc.cc/v2/embed/movie/${id}`,         tv: (id,s,e) => `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}` },
+  { name: 'VidLink',     movie: id => `https://vidlink.pro/movie/${id}`,                tv: (id,s,e) => `https://vidlink.pro/tv/${id}/${s}/${e}` },
+  { name: 'Embed.su',    movie: id => `https://embed.su/embed/movie/${id}`,             tv: (id,s,e) => `https://embed.su/embed/tv/${id}/${s}/${e}` },
+  { name: 'AutoEmbed',   movie: id => `https://player.autoembed.cc/embed/movie/${id}`,  tv: (id,s,e) => `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}` },
+  { name: 'VidFast',     movie: id => `https://vidfast.pro/movie/${id}`,                tv: (id,s,e) => `https://vidfast.pro/tv/${id}/${s}/${e}` },
+  { name: '2Embed',      movie: id => `https://www.2embed.cc/embed/${id}`,              tv: (id,s,e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}` },
+  { name: 'MoviesAPI',   movie: id => `https://moviesapi.club/movie/${id}`,             tv: (id,s,e) => `https://moviesapi.club/tv/${id}-${s}-${e}` },
+  { name: 'MultiEmbed',  movie: id => `https://multiembed.mov/?video_id=${id}&tmdb=1`,  tv: (id,s,e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}` },
 ];
 
 let currentMovieId   = null;
@@ -1710,8 +1717,9 @@ function tryProvider(movieId, index) {
   }
 
   currentProvider = index;
-  const url = PROVIDERS[index](movieId);
-  $('playerLoadingText') && ($('playerLoadingText').textContent = `Menghubungkan ke sumber ${index + 1}/${PROVIDERS.length}…`);
+  const prov = PROVIDERS[index];
+  const url = prov.movie(movieId);
+  $('playerLoadingText') && ($('playerLoadingText').textContent = `Menghubungkan ke ${prov.name} (sumber ${index + 1}/${PROVIDERS.length})…`);
 
   // Highlight current dot
   PROVIDERS.forEach((_, i) => {
@@ -1722,7 +1730,7 @@ function tryProvider(movieId, index) {
   // Set a timeout — if iframe doesn't signal success in 8s, try next
   const timeout = setTimeout(() => {
     tryProvider(movieId, index + 1);
-  }, 8000);
+  }, 6000);
 
   playerIframe.onload = () => {
     clearTimeout(timeout);
@@ -1806,6 +1814,14 @@ function closePlayer() {
 
 $('playerBack').addEventListener('click', closePlayer);
 $('btnFullscreenTop') && $('btnFullscreenTop').addEventListener('click', toggleFullscreen);
+$('btnSwitchSrc') && $('btnSwitchSrc').addEventListener('click', () => {
+  if (currentMovieId == null) return;
+  const next = (currentProvider + 1) % PROVIDERS.length;
+  playerLoading.innerHTML = '<div class="player-spinner"></div><div class="player-loading-text" id="playerLoadingText">Mengganti sumber…</div>';
+  playerLoading.classList.remove('hidden');
+  tryProvider(currentMovieId, next);
+  if (typeof Toast !== 'undefined') Toast.show('Mencoba sumber: ' + PROVIDERS[next].name, '🔄');
+});
 
 /* Episode badge: show for 3s then fade */
 function showEpisodeBadge() {
