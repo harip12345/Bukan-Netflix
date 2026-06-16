@@ -580,7 +580,7 @@
     .footer-links a:hover { text-decoration: underline; }
     .footer-note { margin-top: 8px; }
 
-    /* ── Responsive ──────────────────────────────────────────           ── */
+    /* ── Responsive ──────────────────────────────────────────             ── */
     @media (max-width: 768px) {
       .nav-links { display: none; }
       .hero-content { max-width: 80%; bottom: 18%; }
@@ -678,6 +678,16 @@
       border: none;
       display: block;
     }
+    /* Iframe-only player: hide simulated controls, let the embed handle playback */
+    .player-controls { display: none !important; }
+    .player-iframe-wrap { background: #000; }
+    .player-fs-btn {
+      background: transparent; border: none; color: #fff;
+      cursor: pointer; opacity: .85; padding: 6px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 4px; transition: opacity .2s, background .2s;
+    }
+    .player-fs-btn:hover { opacity: 1; background: rgba(255,255,255,.12); }
 
     /* Loading spinner over iframe */
     .player-loading {
@@ -1210,6 +1220,9 @@
         <div class="player-movie-title" id="playerTitle">—</div>
         <div class="player-movie-meta" id="playerMeta">—</div>
       </div>
+      <button class="player-fs-btn" id="btnFullscreenTop" title="Layar Penuh" aria-label="Layar Penuh">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+      </button>
       <div class="player-logo">▶ FilmFlix</div>
     </div>
 
@@ -1718,7 +1731,6 @@ function tryProvider(movieId, index) {
     setTimeout(() => {
       playerLoading.classList.add('hidden');
       showEpisodeBadge();
-      startFakeProgress();
     }, 800);
   };
 
@@ -1793,6 +1805,7 @@ function closePlayer() {
 }
 
 $('playerBack').addEventListener('click', closePlayer);
+$('btnFullscreenTop') && $('btnFullscreenTop').addEventListener('click', toggleFullscreen);
 
 /* Episode badge: show for 3s then fade */
 function showEpisodeBadge() {
@@ -1961,19 +1974,6 @@ playerOverlay.addEventListener('click', closeAllPanels);
 function onPlayerKey(e) {
   if ($('apiModal').style.display !== 'none') return;
   switch(e.code) {
-    case 'Space': case 'KeyK':
-      e.preventDefault();
-      isPlaying = !isPlaying; updatePlayPauseIcon(); break;
-    case 'ArrowLeft':  case 'KeyJ':
-      fakeProg = Math.max(0, fakeProg - 10);
-      $('progCurrent').textContent = formatTime(fakeProg);
-      $('progressFill').style.width = (fakeProg/6300*100)+'%'; break;
-    case 'ArrowRight': case 'KeyL':
-      fakeProg = Math.min(6300, fakeProg + 10);
-      $('progCurrent').textContent = formatTime(fakeProg);
-      $('progressFill').style.width = (fakeProg/6300*100)+'%'; break;
-    case 'KeyM':
-      $('btnMute').click(); break;
     case 'KeyF':
       toggleFullscreen(); break;
     case 'Escape':
@@ -2339,21 +2339,6 @@ function injectEnhancementDom() {
     main.appendChild(sec);
   }
 
-  // Player caption + quality badge
-  const wrap = document.querySelector('.player-iframe-wrap');
-  if (wrap) {
-    const cap = document.createElement('div');
-    cap.className = 'player-caption';
-    cap.id = 'playerCaption';
-    wrap.appendChild(cap);
-  }
-  const ctrlTitle = $('ctrlTitle');
-  if (ctrlTitle) {
-    const badge = document.createElement('span');
-    badge.className = 'player-badge';
-    badge.id = 'playerBadge';
-    ctrlTitle.after(badge);
-  }
 }
 
 /* ── Wire navbar, search, hero, explore, panels ──────── */
@@ -2392,11 +2377,6 @@ function wireStaticButtons() {
       Toast.show(`Menampilkan semua: ${title}`, '🎬');
       span.closest('.section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-  });
-
-  // Player control panels: apply real effect on selection
-  document.querySelectorAll('.ctrl-panel .panel-item').forEach(item => {
-    item.addEventListener('click', () => applyPanelSelection(item));
   });
 
   // Footer links → friendly placeholder
