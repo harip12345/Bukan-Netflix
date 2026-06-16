@@ -1040,13 +1040,7 @@
         <div class="badge-title" id="epBadgeTitle">—</div>
       </div>
 
-      <iframe
-        id="playerIframe"
-        src="about:blank"
-        allowfullscreen
-        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-        referrerpolicy="no-referrer-when-downgrade"
-      ></iframe>
+      <div id="playerIframeWrap" style="width:100%;height:100%;"></div>
     </div>
 
     <!-- Bottom controls -->
@@ -1465,7 +1459,6 @@ async function loadAll() {
    PLAYER MODAL
 ────────────────────────────────────────────────────────── */
 const playerOverlay = $('playerOverlay');
-const playerIframe  = $('playerIframe');
 const playerLoading = $('playerLoading');
 const epBadge       = $('epBadge');
 const epBadgeTitle  = $('epBadgeTitle');
@@ -1476,20 +1469,44 @@ let fakeProg = 0;
 let isPlaying = true;
 
 /* ── Multi-provider fallback ─────────────────────────── */
+// Urutan provider — persis seperti kode referensi yang berhasil
 const PROVIDERS = [
+  id => `https://vidsrc.me/embed/movie?tmdb=${id}`,
   id => `https://vidsrc.xyz/embed/movie?tmdb=${id}`,
   id => `https://embed.su/embed/movie/${id}`,
-  id => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
   id => `https://vidsrc.in/embed/movie?tmdb=${id}`,
-  id => `https://vidsrc.me/embed/movie?tmdb=${id}`,
+  id => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
 ];
 
-let currentMovieId   = null;
-let currentProvider  = 0;
+let currentMovieId  = null;
+let currentProvider = 0;
+const iframeWrap    = $('playerIframeWrap');
+
+function injectIframe(url) {
+  // Hapus iframe lama dulu (penting! sama seperti playerContainer.innerHTML = '' di kode referensi)
+  iframeWrap.innerHTML = '';
+  // Inject fresh — persis pola yang bekerja di kode referensi
+  iframeWrap.innerHTML = `
+    <iframe
+      src="${url}"
+      frameborder="0"
+      allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+      allowfullscreen="true"
+      webkitallowfullscreen="true"
+      mozallowfullscreen="true"
+      style="width:100%;height:100%;border:none;display:block;"
+    ></iframe>`;
+  return iframeWrap.querySelector('iframe');
+}
 
 function tryProvider(movieId, index) {
+  // Update dot indicators
+  PROVIDERS.forEach((_, i) => {
+    const dot = document.getElementById(`pdot${i}`);
+    if (dot) dot.style.background = i < index ? '#46d369' : i === index ? '#E50914' : '#444';
+  });
+
   if (index >= PROVIDERS.length) {
-    // All failed → show error inside loading area
     playerLoading.innerHTML = `
       <div style="text-align:center;padding:24px">
         <div style="font-size:2.5rem;margin-bottom:14px">😔</div>
@@ -1507,36 +1524,33 @@ function tryProvider(movieId, index) {
 
   currentProvider = index;
   const url = PROVIDERS[index](movieId);
-  $('playerLoadingText') && ($('playerLoadingText').textContent = `Menghubungkan ke sumber ${index + 1}/${PROVIDERS.length}…`);
 
-  // Highlight current dot
-  PROVIDERS.forEach((_, i) => {
-    const dot = document.getElementById(`pdot${i}`);
-    if (dot) dot.style.background = i < index ? '#46d369' : i === index ? '#E50914' : '#444';
-  });
+  const ltxt = $('playerLoadingText');
+  if (ltxt) ltxt.textContent = index === 0
+    ? 'Memuat video…'
+    : `Mencoba sumber ${index + 1}/${PROVIDERS.length}…`;
 
-  // Set a timeout — if iframe doesn't signal success in 8s, try next
+  // Inject iframe fresh setiap percobaan
+  const iframe = injectIframe(url);
+
+  // Timeout 9 detik — jika tidak ada sinyal load, coba provider berikutnya
   const timeout = setTimeout(() => {
     tryProvider(movieId, index + 1);
-  }, 8000);
+  }, 9000);
 
-  playerIframe.onload = () => {
+  iframe.onload = () => {
     clearTimeout(timeout);
-    // Brief wait then hide spinner — we can't read iframe content due to CORS
-    // but if it loaded without network error, assume success
     setTimeout(() => {
       playerLoading.classList.add('hidden');
       showEpisodeBadge();
       startFakeProgress();
-    }, 800);
+    }, 600);
   };
 
-  playerIframe.onerror = () => {
+  iframe.onerror = () => {
     clearTimeout(timeout);
     tryProvider(movieId, index + 1);
   };
-
-  playerIframe.src = url;
 }
 
 /* Open player */
@@ -1589,7 +1603,7 @@ function closePlayer() {
   playerOverlay.classList.remove('open');
   setTimeout(() => {
     playerOverlay.style.display = 'none';
-    playerIframe.src = 'about:blank';
+    iframeWrap.innerHTML = '';          // bersihkan iframe — sama seperti playerContainer.innerHTML='' di referensi
     document.body.style.overflow = '';
   }, 250);
   clearTimeout(idleTimer);
