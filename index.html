@@ -1031,7 +1031,7 @@
       <!-- Loading spinner -->
       <div class="player-loading" id="playerLoading">
         <div class="player-spinner"></div>
-        <div class="player-loading-text">Memuat video…</div>
+        <div class="player-loading-text" id="playerLoadingText">Memuat video…</div>
       </div>
 
       <!-- Episode badge (shown briefly on open) -->
@@ -1044,9 +1044,8 @@
         id="playerIframe"
         src="about:blank"
         allowfullscreen
-        allow="autoplay; fullscreen; picture-in-picture"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
-        referrerpolicy="no-referrer"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+        referrerpolicy="no-referrer-when-downgrade"
       ></iframe>
     </div>
 
@@ -1476,34 +1475,110 @@ let progressInterval = null;
 let fakeProg = 0;
 let isPlaying = true;
 
+/* ── Multi-provider fallback ─────────────────────────── */
+const PROVIDERS = [
+  id => `https://vidsrc.xyz/embed/movie?tmdb=${id}`,
+  id => `https://embed.su/embed/movie/${id}`,
+  id => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
+  id => `https://vidsrc.in/embed/movie?tmdb=${id}`,
+  id => `https://vidsrc.me/embed/movie?tmdb=${id}`,
+];
+
+let currentMovieId   = null;
+let currentProvider  = 0;
+
+function tryProvider(movieId, index) {
+  if (index >= PROVIDERS.length) {
+    // All failed → show error inside loading area
+    playerLoading.innerHTML = `
+      <div style="text-align:center;padding:24px">
+        <div style="font-size:2.5rem;margin-bottom:14px">😔</div>
+        <div style="color:#fff;font-size:1rem;font-weight:700;margin-bottom:8px">Video tidak tersedia</div>
+        <div style="color:#aaa;font-size:.82rem;max-width:320px;line-height:1.6;margin-bottom:20px">
+          Semua sumber video tidak dapat diakses saat ini.<br>Coba film lain atau tunggu beberapa saat.
+        </div>
+        <button onclick="closePlayer()" style="padding:10px 24px;background:#E50914;color:#fff;border:none;border-radius:4px;font-size:.9rem;font-weight:700;cursor:pointer">
+          ← Kembali ke Katalog
+        </button>
+      </div>`;
+    playerLoading.classList.remove('hidden');
+    return;
+  }
+
+  currentProvider = index;
+  const url = PROVIDERS[index](movieId);
+  $('playerLoadingText') && ($('playerLoadingText').textContent = `Menghubungkan ke sumber ${index + 1}/${PROVIDERS.length}…`);
+
+  // Highlight current dot
+  PROVIDERS.forEach((_, i) => {
+    const dot = document.getElementById(`pdot${i}`);
+    if (dot) dot.style.background = i < index ? '#46d369' : i === index ? '#E50914' : '#444';
+  });
+
+  // Set a timeout — if iframe doesn't signal success in 8s, try next
+  const timeout = setTimeout(() => {
+    tryProvider(movieId, index + 1);
+  }, 8000);
+
+  playerIframe.onload = () => {
+    clearTimeout(timeout);
+    // Brief wait then hide spinner — we can't read iframe content due to CORS
+    // but if it loaded without network error, assume success
+    setTimeout(() => {
+      playerLoading.classList.add('hidden');
+      showEpisodeBadge();
+      startFakeProgress();
+    }, 800);
+  };
+
+  playerIframe.onerror = () => {
+    clearTimeout(timeout);
+    tryProvider(movieId, index + 1);
+  };
+
+  playerIframe.src = url;
+}
+
 /* Open player */
 function openPlayer(movieId, title, meta) {
-  // Set iframe src
-  playerIframe.src = `https://vidsrc.me/embed/movie?tmdb=${movieId}`;
+  currentMovieId = movieId;
+  currentProvider = 0;
+
+  // Reset loading UI
+  playerLoading.innerHTML = `
+    <div class="player-spinner"></div>
+    <div class="player-loading-text" id="playerLoadingText">Memuat video…</div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center" id="providerDots"></div>`;
+  playerLoading.classList.remove('hidden');
+
+  // Render provider dots
+  setTimeout(() => {
+    const dotsEl = document.getElementById('providerDots');
+    if (dotsEl) {
+      dotsEl.innerHTML = PROVIDERS.map((_, i) =>
+        `<div id="pdot${i}" style="width:8px;height:8px;border-radius:50%;background:${i===0?'#E50914':'#444'};transition:background .3s"></div>`
+      ).join('');
+    }
+  }, 50);
 
   // Update info labels
-  $('playerTitle').textContent  = title;
-  $('ctrlTitle').textContent    = title;
-  $('playerMeta').textContent   = meta;
-  epBadgeTitle.textContent      = title;
+  $('playerTitle').textContent = title;
+  $('ctrlTitle').textContent   = title;
+  $('playerMeta').textContent  = meta;
+  epBadgeTitle.textContent     = title;
 
   // Show overlay
   playerOverlay.style.display = 'flex';
   requestAnimationFrame(() => playerOverlay.classList.add('open'));
   document.body.style.overflow = 'hidden';
 
-  // Show loading until iframe fires load
-  playerLoading.classList.remove('hidden');
-  playerIframe.onload = () => {
-    playerLoading.classList.add('hidden');
-    showEpisodeBadge();
-    startFakeProgress();
-  };
-
   // Reset state
   isPlaying = true;
   updatePlayPauseIcon();
   resetIdleTimer();
+
+  // Start trying providers
+  tryProvider(movieId, 0);
 
   // Keyboard shortcuts
   document.addEventListener('keydown', onPlayerKey);
