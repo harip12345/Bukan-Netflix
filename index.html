@@ -1318,6 +1318,7 @@
         src="about:blank"
         allowfullscreen
         allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+        sandbox="allow-same-origin allow-scripts allow-forms allow-presentation"
         referrerpolicy="no-referrer-when-downgrade"
       ></iframe>
     </div>
@@ -1680,6 +1681,18 @@ window.addEventListener('scroll', () => {
 /* ──────────────────────────────────────────────────────────
    LOAD ALL DATA
 ────────────────────────────────────────────────────────── */
+/* Filter: sembunyikan film India */
+const BLOCK_LANGS = ['hi','ta','te','ml','kn','bn','mr','pa','gu','or','as'];
+function excludeIndian(list) {
+  return (list || []).filter(m => {
+    const lang = (m.original_language || '').toLowerCase();
+    if (BLOCK_LANGS.includes(lang)) return false;
+    const countries = m.origin_country || (m.production_countries ? m.production_countries.map(c => c.iso_3166_1) : []);
+    if (Array.isArray(countries) && countries.includes('IN')) return false;
+    return true;
+  });
+}
+
 async function loadAll() {
   // Show skeletons
   renderSkeletons($('popularGrid'), 10);
@@ -1693,9 +1706,9 @@ async function loadAll() {
       tmdb('/movie/now_playing', { page: 1 })
     ]);
 
-    const popular   = popularRes.results   || [];
-    const topRated  = topRes.results       || [];
-    const nowPlaying = nowRes.results      || [];
+    const popular    = excludeIndian(popularRes.results);
+    const topRated   = excludeIndian(topRes.results);
+    const nowPlaying = excludeIndian(nowRes.results);
 
     allMovies = popular;
 
